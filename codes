@@ -1,0 +1,164 @@
+/*Customers and Products Analysis Using SQL*/
+
+-- Select each table name as a string.
+-- Select the number of attributes as an integer (count the number of attributes per table).
+-- Select the number of rows using the COUNT(*) function.
+-- Use the compound-operator UNION ALL to bind these rows together.
+
+SELECT  'customers' as table_name,13 as number_of_attributes, count(*)  as  number_of_rows
+  FROM customers
+
+  Union ALL
+  
+  SELECT 'products' as table_name, 9 as number_of_attributes, count(*)  as  number_of_rows
+FROM products
+
+UNION ALL
+
+SELECT 'productlines' as table_name, 4 as number_of_attributes, count(*)  as  number_of_rows
+FROM productlines
+
+UNION ALL
+
+SELECT 'orders' as table_name, 7 as number_of_attributes, count(*) as number_of_rows
+FROM orders
+
+UNION ALL
+
+ SELECT 'ordersdetails' as table_name, 5 as number_of_attributes, count(*) as number_of_rows
+FROM orderdetails
+
+UNION ALL
+
+SELECT 'payments' as table_name, 4 as number_of_attributes, count(*) as number_of_rows
+FROM payments
+
+UNION ALL
+
+SELECT 'employees' as table_name, 8 as number_of_attributes, count(*) as number_of_rows
+FROM employees
+
+UNION ALL
+
+SELECT 'offices' as table_name, 9 as number_of_attributes, count(*) as number_of_rows
+FROM offices;
+
+/*result*/
+table_name	number_of_attributes	number_of_rows
+Customers	13	122
+Products	9	110
+ProductLines	4	7
+Orders	7	326
+OrderDetails	5	2996
+Payments	4	273
+Employees	8	23
+Offices	9	7
+
+
+-- Low stock = SUM(quantityOrdered)/quantityInStock
+-- Product performance = SUM(quantityOrdered*priceEach)
+
+/*
+The low stock represents the quantity of each product sold divided by the quantity of product in stock. 
+We can consider the ten lowest rates. These will be the top ten products that are (almost) out-of-stock.
+The product performance represents the sum of sales per product.
+Priority products for restocking are those with high product performance that are on the brink of being out of stock.
+*/
+
+--Low Stock
+
+SELECT productCode,
+				 SUM(quantityOrdered)*1.0/ (SELECT quantityInStock
+																				FROM products p  --,  orderdetails od 
+																			WHERE od.productCode = p.productCode) AS low_stock
+from orderdetails od
+group by productCode
+order by low_stock   
+--*1.0 to make it a float
+
+--Product performance
+
+SELECT productCode, SUM(quantityOrdered*priceEach) as product_performance
+FROM orderdetails
+GROUP by productCode
+ORDER by product_performance DESC
+
+--Priority products
+
+WITH low_stock_table AS
+(SELECT productCode,
+				 SUM(quantityOrdered)*1.0/ (SELECT quantityInStock
+																				FROM products p  --,  orderdetails od 
+																			WHERE od.productCode = p.productCode) AS low_stock
+from orderdetails od
+group by productCode
+order by low_stock 
+limit 10 )
+
+SELECT productCode, SUM(quantityOrdered*priceEach) as product_performance
+FROM orderdetails od
+WHERE productCode IN (SELECT productCode FROM low_stock_table)
+GROUP by productCode
+ORDER by product_performance DESC
+
+-- Finding the VIP (very important person) customers and those who are less engaged.
+-- VIP customers bring in the most profit for the store. Less-engaged customers bring in less profit.
+
+SELECT o.customerNumber, sum(od.quantityOrdered * (od.priceEach - p.buyPrice )) as profit
+FROM orders o
+JOIN orderdetails od
+ON o.orderNumber = od.orderNumber
+JOIN products p
+ON od.productCode = p.productCode
+GROUP by o.customerNumber
+ORDER by profit desc
+
+/*SELECT o.customerNumber, SUM(quantityOrdered * (priceEach - buyPrice)) AS revenue
+  FROM products p
+  JOIN orderdetails od
+    ON p.productCode = od.productCode
+  JOIN orders o
+    ON o.orderNumber = od.orderNumber
+ GROUP BY o.customerNumber
+ ORDER by revenue DESC
+*/
+
+-- Top 5 VIP customers
+
+WITH 
+
+top_5_customer AS (
+SELECT o.customerNumber, sum(od.quantityOrdered * (od.priceEach - p.buyPrice )) as profit
+FROM orders o
+JOIN orderdetails od
+ON o.orderNumber = od.orderNumber
+JOIN products p
+ON od.productCode = p.productCode
+GROUP by o.customerNumber
+ORDER by profit desc
+LIMIT 5)
+
+SELECT c.customerName, c.customerNumber, c.contactFirstName, c.contactLastName,t5.profit
+FROM customers c
+JOIN top_5_customer as t5
+ON t5.customerNumber = c.customerNumber
+
+
+-- How Much Can We Spend on Acquiring New Customers?
+-- Calculating LTV, customer lifetime value (how much profit an average customer generates during their lifetime with the store)
+
+WITH 
+
+ltv_computing AS (
+SELECT o.customerNumber, sum(od.quantityOrdered * (od.priceEach - p.buyPrice )) as profit
+FROM orders o
+JOIN orderdetails od
+ON o.orderNumber = od.orderNumber
+JOIN products p
+ON od.productCode = p.productCode
+GROUP by o.customerNumber
+ORDER by profit desc
+)
+
+SELECT avg(profit)
+FROM ltv_computing
